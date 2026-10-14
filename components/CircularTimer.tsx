@@ -22,6 +22,7 @@ import * as Speech from "expo-speech";
 import { useKeepAwake } from "expo-keep-awake";
 import { useAudioPlayer } from "expo-audio";
 import { segmentInfo, type GuideSegment } from "@/utils/sessionGuide";
+import HeadPhoto from "@/components/HeadPhoto";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const SIZE = 240;
@@ -207,6 +208,10 @@ export default function CircularTimer({
   const info = guided ? segmentInfo(segments!, durationSec - remaining) : null;
   const now = info ? segments![info.index] : null;
   const next = info ? segments![info.index + 1] : null;
+  // Head diagram: the current area lights up on the timer's clock; finished areas stay tinted
+  const activeZone = guided && started && now ? now.id : null;
+  const doneZones =
+    guided && started && info ? segments!.slice(0, info.index).map((s) => s.id) : [];
 
   return (
     <View style={styles.container}>
@@ -254,18 +259,22 @@ export default function CircularTimer({
       </View>
 
       {guided && !justFinished && (
-        <View style={styles.guide}>
-          {started && now && info ? (
-            <>
-              <Text style={styles.guideNow}>{now.label}</Text>
-              <Text style={styles.guideSub}>
-                {mmss(info.secondsLeft)} left in this area
-                {next ? ` · Next: ${next.label}` : " · Last area"}
-              </Text>
-            </>
-          ) : (
-            <Text style={styles.guideSub}>Guided: {segments!.length} areas</Text>
-          )}
+        <View style={styles.guideRow}>
+          <HeadPhoto active={activeZone} done={doneZones} size={148} />
+          <View style={styles.guideText}>
+            {started && now && info ? (
+              <>
+                <Text style={styles.guideNow}>{now.label}</Text>
+                <Text style={styles.guideSub}>{mmss(info.secondsLeft)} left in this area</Text>
+                <Text style={styles.guideSub}>{next ? `Next: ${next.label}` : "Last area"}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.guideNow}>Guided session</Text>
+                <Text style={styles.guideSub}>{segments!.length} areas, starting with {segments![0].label}</Text>
+              </>
+            )}
+          </View>
         </View>
       )}
     </View>
@@ -309,7 +318,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  guide: { alignItems: "center", marginTop: 16, paddingHorizontal: 12 },
+  guideRow: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 20,
+    paddingHorizontal: 12,
+  },
+  guideText: { alignItems: "center" },
   guideNow: { ...typography.h3, color: colors.primary, textAlign: "center" },
   guideSub: {
     ...typography.caption,
