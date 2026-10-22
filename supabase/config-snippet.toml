@@ -1,0 +1,5 @@
+# Add to supabase/config.toml, next to [functions.analyze-hair]
+[functions.revenuecat-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/revenuecat-webhook/index.ts"

@@ -16,8 +16,11 @@ import { rescheduleReminders } from "@/utils/reminders";
 import { colors, spacing, typography } from "@/constants/theme";
 import { toLocalDateISO } from "@/utils/date";
 import TopBar from "@/components/TopBar";
+import { Redirect } from 'expo-router';
 
 export default function HomeScreen() {
+  // return <Redirect href="/onboarding" />; 
+  
   const [activities, setActivities] = useState<Activity[]>([]);
   // Timer length comes from Settings (1-60 minutes, default 5)
   const [durationSec, setDurationSec] = useState(DEFAULT_SESSION_MIN * 60);
