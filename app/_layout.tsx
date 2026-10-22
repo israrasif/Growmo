@@ -9,10 +9,14 @@ import { supabase } from "@/utils/supabase";
 import { createSessionFromUrl } from "@/utils/authLink";
 import { colors } from "@/constants/theme";
 import { useDataSyncTriggers } from "@/utils/useDataSync";
+import { usePurchasesSetup } from "@/utils/usePurchasesSetup";
 
 export default function RootLayout() {
   useDataSyncTriggers();
   // undefined = still checking for a saved session, null = signed out.
+
+  usePurchasesSetup();
+
   const [session, setSession] = useState<Session | null | undefined>(undefined);
 
   useEffect(() => {
