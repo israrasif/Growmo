@@ -9,6 +9,7 @@ import PlanIntake from "@/components/PlanIntake";
 import { colors, radii, spacing, typography } from "@/constants/theme";
 import { hasPlus, usePlan } from "@/utils/entitlements";
 import { getSessions } from "@/utils/storage";
+import { buildGuide } from "@/utils/sessionGuide";
 import { setSessionLengthMin } from "@/utils/settings";
 import {
   Plan,
@@ -38,7 +39,9 @@ import {
 const EMPTY: PlanProgress = { done: {}, shedding: {}, irritation: false };
 
 const describe = (w: WeekPlan) =>
-  `${w.minutesPerDay} min × ${w.daysPerWeek} days` + (w.sessionsPerDay === 2 ? ", in 2 sessions a day" : "");
+  `${w.sessionsPerDay} ${w.sessionsPerDay === 1 ? "session" : "sessions"} of ${w.minutesPerSession} min, ${w.daysPerWeek} days a week`;
+
+const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 
 export default function RoutineScreen() {
   const router = useRouter();
@@ -93,7 +96,7 @@ export default function RoutineScreen() {
       const cfg = config ?? (await getPlanConfig());
       const quiz = await getQuizInput();
       if (!quiz) return;
-      const scan = plus ? await getScanInput() : null;
+      const scan = await getScanInput();
       const result = buildPlan(cfg, quiz, scan, intake);
       if (result.kind === "doctor_first") {
         setGate({ title: result.title, body: result.body });
@@ -132,6 +135,32 @@ export default function RoutineScreen() {
     );
   }
 
+  // ------------------------------------------------------------- Free plan
+  // The personalized routine is part of Plus. Free users just use the timer, with no plan or guidance.
+  if (!plus) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top"]}>
+        <TopBar />
+        <ScrollView contentContainerStyle={styles.container}>
+          <Text style={styles.title}>Your routine</Text>
+          <View style={[styles.card, styles.lockCard]}>
+            <View style={styles.rowCenter}>
+              <Ionicons name="lock-closed" size={18} color={colors.primaryDark} />
+              <Text style={styles.cardTitle}>Part of Plus</Text>
+            </View>
+            <Text style={styles.body}>
+              A 12-week routine built around you: three scalp areas in rotation, guided sessions on the timer, and
+              monthly reviews that adjust to how you're doing.
+            </Text>
+            <Pressable style={styles.primaryBtn} onPress={() => router.push("/plans")}>
+              <Text style={styles.primaryBtnText}>See Plus</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   // ------------------------------------------------------------- no plan yet
   if (!plan) {
     return (
@@ -140,7 +169,7 @@ export default function RoutineScreen() {
         <ScrollView contentContainerStyle={styles.container}>
           <Text style={styles.title}>Your routine</Text>
           <Text style={styles.subtitle}>
-            A 12-week scalp-care plan built from your hair health check{plus ? " and photo scans" : ""}.
+            A 12-week scalp-care plan built from your hair health check and photo scans.
           </Text>
 
           {gate && (
@@ -166,8 +195,7 @@ export default function RoutineScreen() {
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Build my plan</Text>
               <Text style={styles.body}>
-                Four quick questions, then you'll see your plan. Your first week is free; Plus unlocks the full 12 weeks,
-                monthly reviews and plan adjustments.
+                Four quick questions, then you'll see your plan.
               </Text>
               <Pressable style={styles.primaryBtn} onPress={() => setIntakeOpen(true)}>
                 <Text style={styles.primaryBtnText}>Start (4 questions)</Text>
@@ -188,7 +216,6 @@ export default function RoutineScreen() {
   const cw = currentWeek(plan);
   const week = plan.weeks[cw - 1];
   const daysDone = daysDoneInWeek(plan, cw, timestamps);
-  const freeLocked = !plus && cw > 1;
 
   const review = config ? reviewPlan(config, plan, timestamps, progress.shedding, progress.irritation) : null;
   const showReview = !!review && plus && cw >= 2 && (progress.reviewedWeek ?? 0) < cw;
@@ -203,7 +230,7 @@ export default function RoutineScreen() {
 
   // Days per week: the person can change this at any time, from this week onwards
   const minDays = config?.adjust?.minDays ?? 2;
-  const maxDays = config ? maxAdjustableDays(config, plan) : 6;
+  const maxDays = config ? maxAdjustableDays(config, plan) : 7;
   const recDays = week.recommendedDays ?? week.daysPerWeek;
 
   const changeDays = async (delta: number) => {
@@ -238,21 +265,7 @@ export default function RoutineScreen() {
           {!!week.milestone && <Text style={styles.milestone}>{week.milestone}</Text>}
         </View>
 
-        {freeLocked ? (
-          <View style={[styles.card, styles.lockCard]}>
-            <View style={styles.rowCenter}>
-              <Ionicons name="lock-closed" size={18} color={colors.primaryDark} />
-              <Text style={styles.cardTitle}>Your free week has ended</Text>
-            </View>
-            <Text style={styles.body}>
-              Keep your plan going with Plus: the full 12 weeks, weekly targets, monthly reviews that adjust to how you're
-              doing, and your progress report.
-            </Text>
-            <Pressable style={styles.primaryBtn} onPress={() => router.push("/plans")}>
-              <Text style={styles.primaryBtnText}>See Plus</Text>
-            </Pressable>
-          </View>
-        ) : (
+        {(
           <>
             {/* This week */}
             <View style={styles.card}>
@@ -310,12 +323,15 @@ export default function RoutineScreen() {
                 </Pressable>
               )}
 
-              <Text style={styles.label}>Where to spend the time</Text>
-              {week.zoneMinutes.map((z) => (
-                <Text key={z.zone} style={styles.line}>
-                  • {z.label}: {z.minutes} min
+              <Text style={styles.label}>How each session works</Text>
+              <Text style={styles.line}>• {plan.program.rotationNote}</Text>
+              {buildGuide("hairline", week.minutesPerSession * 60, plan.program, week.press).map((s) => (
+                <Text key={s.id} style={styles.line}>
+                  • {plan.program.phases[s.phase].label}: {mmss(s.seconds)}
                 </Text>
               ))}
+              <Text style={styles.line}>• Sides sessions add a ridge pinch along the sides and nape.</Text>
+              {!!week.pressNote && <Text style={styles.line}>• {week.pressNote}</Text>}
 
               <Text style={styles.label}>Technique</Text>
               {week.techniques.map((t) => (
@@ -331,12 +347,12 @@ export default function RoutineScreen() {
               <Pressable
                 style={styles.outlineBtn}
                 onPress={async () => {
-                  await setSessionLengthMin(week.sessionsPerDay === 2 ? Math.round(week.minutesPerDay / 2) : week.minutesPerDay);
+                  await setSessionLengthMin(week.minutesPerSession);
                   router.navigate("/");
                 }}
               >
                 <Text style={styles.outlineBtnText}>
-                  Set my timer to {week.sessionsPerDay === 2 ? Math.round(week.minutesPerDay / 2) : week.minutesPerDay} min
+                  Set my timer to {week.minutesPerSession} min
                 </Text>
               </Pressable>
             </View>
@@ -422,18 +438,10 @@ export default function RoutineScreen() {
         </Pressable>
         {showAll &&
           plan.weeks.map((w) => {
-            const locked = !plus && w.week > 1;
             return (
               <View key={w.week} style={[styles.weekRow, w.week === cw && styles.weekRowNow]}>
                 <Text style={styles.weekNum}>Week {w.week}</Text>
-                {locked ? (
-                  <View style={styles.rowCenter}>
-                    <Ionicons name="lock-closed" size={13} color={colors.primaryDark} />
-                    <Text style={styles.weekText}>Plus</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.weekText}>{describe(w)}</Text>
-                )}
+                <Text style={styles.weekText}>{describe(w)}</Text>
               </View>
             );
           })}

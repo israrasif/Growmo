@@ -37,7 +37,7 @@ const mmss = (sec: number) =>
 interface Props {
   durationSec: number;
   onComplete: (elapsedSec: number) => void;
-  /** Optional: areas to move through during the session (guided mode) */
+  /** Optional: the steps of the session (warm-up, pinch, press, stretch) for guided mode */
   segments?: GuideSegment[];
   /** Speak each change of area out loud. Vibration always happens in guided mode. */
   voiceCues?: boolean;
@@ -161,7 +161,7 @@ export default function CircularTimer({
     }).start();
   }, [remaining, durationSec, progress]);
 
-  // Guided mode: vibrate (and optionally speak) when it's time to move to the next area
+  // Guided mode: vibrate (and optionally speak) when it's time to move to the next step
   const announce = useCallback((index: number) => {
     const segs = segmentsRef.current;
     if (!segs || !segs[index]) return;
@@ -173,7 +173,7 @@ export default function CircularTimer({
         index === 0
           ? `Start with ${label}`
           : index === segs.length - 1
-            ? `Last area, ${label}`
+            ? `Last step, ${label}`
             : `Next, ${label}`,
       );
     }
@@ -208,10 +208,8 @@ export default function CircularTimer({
   const info = guided ? segmentInfo(segments!, durationSec - remaining) : null;
   const now = info ? segments![info.index] : null;
   const next = info ? segments![info.index + 1] : null;
-  // Head diagram: the current area lights up on the timer's clock; finished areas stay tinted
-  const activeZone = guided && started && now ? now.id : null;
-  const doneZones =
-    guided && started && info ? segments!.slice(0, info.index).map((s) => s.id) : [];
+  // Head diagram: the current step's area lights up on the timer's clock (the warm-up lights the whole scalp)
+  const activeZone = guided && started && now ? now.zone : null;
 
   return (
     <View style={styles.container}>
@@ -260,18 +258,18 @@ export default function CircularTimer({
 
       {guided && !justFinished && (
         <View style={styles.guideRow}>
-          <HeadPhoto active={activeZone} done={doneZones} size={148} />
+          <HeadPhoto active={activeZone} size={148} />
           <View style={styles.guideText}>
             {started && now && info ? (
               <>
                 <Text style={styles.guideNow}>{now.label}</Text>
-                <Text style={styles.guideSub}>{mmss(info.secondsLeft)} left in this area</Text>
-                <Text style={styles.guideSub}>{next ? `Next: ${next.label}` : "Last area"}</Text>
+                <Text style={styles.guideSub}>{mmss(info.secondsLeft)} left in this step</Text>
+                <Text style={styles.guideSub}>{next ? `Next: ${next.label}` : "Last step"}</Text>
               </>
             ) : (
               <>
                 <Text style={styles.guideNow}>Guided session</Text>
-                <Text style={styles.guideSub}>{segments!.length} areas, starting with {segments![0].label}</Text>
+                <Text style={styles.guideSub}>{segments!.length} steps, starting with {segments![0].label}</Text>
               </>
             )}
           </View>

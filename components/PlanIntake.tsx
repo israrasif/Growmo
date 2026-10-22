@@ -49,12 +49,12 @@ const STEPS: Step[] = [
   },
   {
     key: "minutesAvailable",
-    title: "How long can you realistically spend each day?",
-    hint: "Be honest. A smaller habit you keep beats a bigger one you drop.",
+    title: "How long can one session be?",
+    hint: "You'll do two sessions a day, one scalp area each time. Be honest: a smaller habit you keep beats a bigger one you drop.",
     options: [
       { label: "About 5 minutes", value: 5 },
       { label: "About 10 minutes", value: 10 },
-      { label: "15 minutes or more", value: 15 },
+      { label: "About 15 minutes", value: 15 },
       { label: "20 minutes", value: 20 },
     ],
   },

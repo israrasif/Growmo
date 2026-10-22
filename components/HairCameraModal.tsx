@@ -339,7 +339,13 @@ export default function HairCameraModal({ visible, onClose, onCaptured }: Props)
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={close}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      onRequestClose={close}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
       {renderBody()}
     </Modal>
   );

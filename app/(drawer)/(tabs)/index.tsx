@@ -5,7 +5,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import CircularTimer from "@/components/CircularTimer";
 import ToggleList from "@/components/ToggleList";
-import MediaPlayer from "@/components/MediaPlayer";
 import DailyCheckIn from "@/components/DailyCheckIn";
 import GuideCard from "@/components/GuideCard";
 import { useSessionGuide } from "@/utils/useSessionGuide";
@@ -16,11 +15,8 @@ import { rescheduleReminders } from "@/utils/reminders";
 import { colors, spacing, typography } from "@/constants/theme";
 import { toLocalDateISO } from "@/utils/date";
 import TopBar from "@/components/TopBar";
-import { Redirect } from 'expo-router';
 
 export default function HomeScreen() {
-  // return <Redirect href="/onboarding" />; 
-  
   const [activities, setActivities] = useState<Activity[]>([]);
   // Timer length comes from Settings (1-60 minutes, default 5)
   const [durationSec, setDurationSec] = useState(DEFAULT_SESSION_MIN * 60);
@@ -77,8 +73,6 @@ export default function HomeScreen() {
         <Text style={styles.subtitle}>
           Follow along, then relax while the timer runs.
         </Text>
-
-        <MediaPlayer />
 
         <View style={styles.timerWrap}>
           {/* key makes the timer restart cleanly when the length changes in Settings */}

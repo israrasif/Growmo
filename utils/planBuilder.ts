@@ -1,5 +1,5 @@
 // utils/planBuilder.ts
-// Turns a person's answers into a 12-week massage plan. Pure logic: no storage, no screens.
+// Turns a person's answers into a 12-week massage program (three scalp areas, taking turns). Pure logic: no storage, no screens.
 // Every number and sentence comes from data/planConfig.json, so you can change the plans by editing that file.
 // This is a habit plan, not a treatment. Nothing in here claims to cure or treat hair loss.
 
@@ -7,13 +7,28 @@
 export type ThinningArea = "none" | "front" | "crown" | "diffuse" | "patchy";
 export type ScalpState = "comfortable" | "sensitive" | "problem";
 export type Level = "L1" | "L2" | "L3" | "L4";
-export type ZoneId = "front" | "crown" | "sides" | "back";
+export type ZoneId = "hairline" | "vertex" | "sides";
+export type PhaseId = "warmup" | "pinch" | "press" | "stretch" | "ridge";
+
+/** Everything a session needs to know about the program, copied from the config when the plan is built. */
+export type ProgramInfo = {
+  phases: Record<PhaseId, { label: string; text: string }>;
+  /** Relative time per phase for one session. "sides" adds the ridge pinch. */
+  split: { standard: Partial<Record<PhaseId, number>>; sides: Partial<Record<PhaseId, number>> };
+  zoneLabels: Record<ZoneId, string>;
+  zoneShort: Record<ZoneId, string>;
+  /** Order the scalp areas take their turns in */
+  rotation: ZoneId[];
+  /** Sessions started before this hour (local time) count as the morning slot */
+  morningUntilHour: number;
+  rotationNote: string;
+};
 
 export type PlanIntake = {
   thinningArea: ThinningArea; // "Where do you notice thinning?"
   scalpState: ScalpState; // "How does your scalp feel?"
   shedCheckedByDoctor: boolean; // "Have you had your shedding checked by a doctor?"
-  minutesAvailable: 5 | 10 | 15 | 20; // "How long can you realistically spend per day?"
+  minutesAvailable: 5 | 10 | 15 | 20; // longest single session the person is happy with (two sessions a day)
 };
 
 export type QuizInput = {
@@ -46,11 +61,13 @@ export type WeekPlan = {
   week: number;
   phase: "foundation" | "build" | "sustain";
   level: Level;
-  minutesPerDay: number;
+  minutesPerSession: number;
+  minutesPerDay: number; // minutesPerSession x sessionsPerDay
   daysPerWeek: number;
   recommendedDays?: number; // what the plan suggested before the person adjusted it
   sessionsPerDay: 1 | 2;
-  zoneMinutes: { zone: ZoneId; label: string; minutes: number }[];
+  press: boolean; // whether pressing is part of this week's sessions
+  pressNote?: string; // shown when pressing is left out or starts later
   techniques: string[];
   tasks: PlanTask[];
   milestone?: string;
@@ -67,6 +84,7 @@ export type Plan = {
   preferredTime: "evening" | "any";
   pressureRule: string;
   safetyNotes: string[];
+  program: ProgramInfo;
   intake: PlanIntake;
   targetLevel: Level;
   daysOverride?: number; // set when the person chose their own days per week
@@ -118,61 +136,23 @@ export function chooseProfile(
   return { profile, tags: tags.filter((t) => t !== dedupe[profile]) };
 }
 
-// -------------------------------------------------------- zone minutes
-function zoneWeights(config: Config, profile: ProfileId, area: ThinningArea): Record<ZoneId, number> {
-  const style = config.profiles[profile].zoneStyle as "even" | "relax" | "focus";
-  const styles = config.zoneStyles;
-  let w: Record<ZoneId, number>;
-
-  if (style === "focus" && (area === "front" || area === "crown")) {
-    // The thinning area gets a bit more time; the rest of the scalp shares the remainder equally
-    const rest = 1 - styles.focus.focusArea;
-    w = { front: rest / 3, crown: rest / 3, sides: rest / 3, back: rest / 3 };
-    w[area] = styles.focus.focusArea;
-  } else if (style === "focus") {
-    w = { ...styles.even };
-  } else {
-    w = { ...styles[style] };
-  }
-
-  // Heavy shedding with a known thinning area: shift a little time to that area, keep it calm
-  if (profile === "heavy_shedding" && (area === "front" || area === "crown")) {
-    w[area] += 0.15;
-    w.sides -= 0.075;
-    w.back -= 0.075;
-  }
-  return w;
+// ------------------------------------------------------------- program
+/** Heavy shedding or a sensitive scalp: no pressing, only warm-up, pinching and stretching. */
+export function noPressFor(profile: ProfileId, tags: string[]): boolean {
+  return tags.includes("sensitive") || profile === "scalp_comfort" || profile === "heavy_shedding";
 }
 
-// Splits session minutes across zones in half-minute steps, using the largest-remainder method.
-// Every zone first gets minEach minutes (so the whole scalp is always covered), and only the minutes
-// left over are shared out by weight. In a short session that means an even split.
-export function splitMinutes(
-  total: number,
-  weights: Record<ZoneId, number>,
-  labels: Record<ZoneId, string>,
-  minEach = 0,
-): { zone: ZoneId; label: string; minutes: number }[] {
-  const zones = Object.keys(weights) as ZoneId[];
-  const base = Math.min(minEach, total / zones.length);
-  const remaining = total - base * zones.length;
-  const sum = zones.reduce((s, z) => s + weights[z], 0);
-  const units = Math.round(remaining * 2); // half-minute units
-  const out = zones.map((z) => {
-    const exact = (weights[z] / sum) * units;
-    return { z, n: Math.floor(exact), frac: exact - Math.floor(exact) };
-  });
-  let left = units - out.reduce((s, r) => s + r.n, 0);
-  [...out].sort((a, b) => b.frac - a.frac).forEach((r) => {
-    if (left > 0) {
-      r.n += 1;
-      left -= 1;
-    }
-  });
-  return zones
-    .map((z) => ({ zone: z, label: labels[z], minutes: base + out.find((r) => r.z === z)!.n / 2 }))
-    .filter((z) => z.minutes > 0)
-    .sort((a, b) => b.minutes - a.minutes);
+function programFrom(config: Config): ProgramInfo {
+  const p = config.program;
+  return {
+    phases: p.phases,
+    split: p.split,
+    zoneLabels: config.zones,
+    zoneShort: config.zoneShort,
+    rotation: p.rotation,
+    morningUntilHour: p.morningUntilHour,
+    rotationNote: p.rotationNote,
+  };
 }
 
 // ------------------------------------------------------- week schedule
@@ -193,19 +173,38 @@ function massageFor(
   config: Config,
   level: Level,
   intake: PlanIntake,
-  profile: ProfileId,
-  weights: Record<ZoneId, number>,
   sensitive: boolean,
+  noPress: boolean,
   week: number,
   daysCap: number,
   daysOverride?: number,
-): Pick<WeekPlan, "level" | "minutesPerDay" | "daysPerWeek" | "recommendedDays" | "sessionsPerDay" | "zoneMinutes" | "techniques"> {
+): Pick<
+  WeekPlan,
+  | "level"
+  | "minutesPerSession"
+  | "minutesPerDay"
+  | "daysPerWeek"
+  | "recommendedDays"
+  | "sessionsPerDay"
+  | "press"
+  | "pressNote"
+  | "techniques"
+> {
   const lv = config.levels[level];
-  const minutes = Math.min(lv.minutes, intake.minutesAvailable, config.maxMinutesPerDay);
+  // minutesAvailable is the longest session the person is happy with
+  const minutes = Math.min(lv.minutes, intake.minutesAvailable, config.maxMinutesPerSession);
+  const sessionsPerDay: 1 | 2 = config.program.sessionsPerDay === 1 ? 1 : 2;
   const recommendedDays = Math.max(3, Math.min(lv.days, daysCap));
   const days = daysOverride ?? recommendedDays;
-  const split = minutes >= config.ramp.splitSessionsFromMinutes;
-  const labels = config.zones as Record<ZoneId, string>;
+
+  const pressFromWeek: number = config.program.pressFromWeek;
+  const press = !noPress && week >= pressFromWeek;
+  const pressNote = noPress
+    ? String(config.program.pressNotes.leftOut)
+    : week < pressFromWeek
+      ? String(config.program.pressNotes.later).replace("{week}", String(pressFromWeek))
+      : undefined;
+
   const techniques: string[] = sensitive
     ? config.techniques.sensitive
     : week <= 2
@@ -215,11 +214,13 @@ function massageFor(
         : config.techniques.weeks5to12;
   return {
     level,
-    minutesPerDay: minutes,
+    minutesPerSession: minutes,
+    minutesPerDay: minutes * sessionsPerDay,
     daysPerWeek: days,
     recommendedDays,
-    sessionsPerDay: split ? 2 : 1,
-    zoneMinutes: splitMinutes(minutes, weights, labels, config.minMinutesPerZone ?? 0),
+    sessionsPerDay,
+    press,
+    pressNote,
     techniques,
   };
 }
@@ -286,14 +287,14 @@ export function buildPlan(
     !intake.shedCheckedByDoctor &&
     (profile === "heavy_shedding" || tags.includes("elevated_shedding") || quiz.score < 35 || lowScan);
 
-  const weights = zoneWeights(config, profile, intake.thinningArea);
+  const noPress = noPressFor(profile, tags);
   const weeks: WeekPlan[] = [];
   for (let week = 1; week <= config.planWeeks; week++) {
     const level = levelForWeek(config, week, target, delay);
     weeks.push({
       week,
       phase: phaseFor(week),
-      ...massageFor(config, level, intake, profile, weights, sensitive, week, pc.daysCap),
+      ...massageFor(config, level, intake, sensitive, noPress, week, pc.daysCap),
       tasks: tasksForWeek(config, week, profile, tags, needsCheckup),
       milestone: config.milestones[String(week)],
     });
@@ -312,6 +313,7 @@ export function buildPlan(
       preferredTime: pc.preferredTime,
       pressureRule: config.pressureRule,
       safetyNotes: config.safetyNotes,
+      program: programFrom(config),
       intake,
       targetLevel: target,
       weeks,
@@ -420,7 +422,7 @@ export function applyReview(config: Config, plan: Plan, action: ReviewAction, fr
   if (action === "keep") return plan;
   const sensitive = plan.tags.includes("sensitive") || plan.profile === "scalp_comfort";
   const pc = config.profiles[plan.profile];
-  const weights = zoneWeights(config, plan.profile, plan.intake.thinningArea);
+  const noPress = noPressFor(plan.profile, plan.tags);
 
   let targetLevel = plan.targetLevel;
   if (action === "step_up" && pc.stepUpTo) targetLevel = pc.stepUpTo as Level;
@@ -442,7 +444,7 @@ export function applyReview(config: Config, plan: Plan, action: ReviewAction, fr
       level = LEVEL_ORDER[Math.max(0, levelIndex(w.level) - 1)];
       daysCap = Math.max(config.review.minDaysAfterSimplify, w.daysPerWeek - 2);
     }
-    const m = massageFor(config, level, plan.intake, plan.profile, weights, sensitive, w.week, daysCap, daysOverride);
+    const m = massageFor(config, level, plan.intake, sensitive, noPress, w.week, daysCap, daysOverride);
     return { ...w, ...m };
   });
   return { ...plan, targetLevel, daysOverride, weeks };
