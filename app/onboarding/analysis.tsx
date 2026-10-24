@@ -14,6 +14,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { contentColumn } from "@/utils/responsive";
 import { usePhotoCapture } from "@/components/usePhotoCapture";
 import { analyzeHairPhoto, type Scan } from "@/utils/analyzeHair";
 import { addVaultPhoto } from "@/utils/storage";
@@ -43,7 +44,12 @@ const METRICS: { key: keyof Scan; label: string }[] = [
 
 export default function AnalysisScreen() {
   const insets = useSafeAreaInsets();
-  const { synced } = useLocalSearchParams<{ synced?: string }>();
+  const { synced, resume } = useLocalSearchParams<{
+    synced?: string;
+    resume?: string;
+  }>();
+  // resume = they already had Plus when they came back to onboarding, so this is not a fresh payment
+  const resumed = resume === "1";
 
   const [stage, setStage] = useState<Stage>("activating");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -136,11 +142,15 @@ export default function AnalysisScreen() {
             <Ionicons name="checkmark" size={26} color="#fff" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.confirmTitle}>Payment confirmed</Text>
+            <Text style={styles.confirmTitle}>
+              {resumed ? "Welcome back" : "Payment confirmed"}
+            </Text>
             <Text style={styles.confirmText}>
-              {stage === "activation_slow"
-                ? "Your payment went through. We are still switching Plus on."
-                : "Welcome to Plus. Everything is unlocked on your account."}
+              {resumed
+                ? "Plus is active on your account."
+                : stage === "activation_slow"
+                  ? "Your payment went through. We are still switching Plus on."
+                  : "Welcome to Plus. Everything is unlocked on your account."}
             </Text>
           </View>
         </View>
@@ -351,6 +361,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.lg,
     backgroundColor: colors.background,
+    ...contentColumn,
   },
   content: { paddingBottom: spacing.lg },
   confirm: {

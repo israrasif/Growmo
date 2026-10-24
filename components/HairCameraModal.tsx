@@ -6,7 +6,7 @@
 //  - a preview to retake or use the photo
 // Needs: npx expo install expo-camera expo-speech expo-haptics expo-sensors
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Speech from "expo-speech";
@@ -33,6 +33,11 @@ type Props = {
 export default function HairCameraModal({ visible, onClose, onCaptured }: Props) {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
+  const { width: winW, height: winH } = useWindowDimensions();
+  // The guide sits between the top bar (10%) and the controls (26%). Size it to fit that space on any screen.
+  const guideH = winH * 0.64;
+  const ovalW = Math.min(winW * 0.8, guideH * 0.75 * 0.96);
+  const boxSize = Math.min(winW * 0.86, guideH * 0.96);
 
   const [facing, setFacing] = useState<"back" | "front">("back");
   const [pose, setPose] = useState<Pose>("top");
@@ -115,7 +120,7 @@ export default function HairCameraModal({ visible, onClose, onCaptured }: Props)
 
   const capture = async () => {
     try {
-      const pic = await cameraRef.current?.takePictureAsync({ quality: 0.8 });
+      const pic = await cameraRef.current?.takePictureAsync({ quality: 0.9 });
       if (pic?.uri) {
         setPhotoUri(pic.uri);
         setPhase("review");
@@ -242,17 +247,24 @@ export default function HairCameraModal({ visible, onClose, onCaptured }: Props)
 
     return (
       <View style={styles.dark}>
-        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing={facing} />
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing={facing}
+          flash="off"
+          autofocus="on"
+          zoom={0}
+        />
 
         {/* Framing guide */}
         <View style={styles.guideWrap} pointerEvents="none">
           {pose === "top" ? (
-            <View style={styles.guideBox}>
+            <View style={[styles.guideBox, { width: boxSize }]}>
               <View style={styles.guideLineV} />
               <Text style={styles.guideText}>Line your parting up with this line</Text>
             </View>
           ) : (
-            <View style={styles.guideOval}>
+            <View style={[styles.guideOval, { width: ovalW }]}>
               <View style={styles.guideLineH} />
               <Text style={styles.guideText}>Hairline on this line</Text>
             </View>
@@ -370,9 +382,18 @@ const styles = StyleSheet.create({
   },
   levelPillOk: { backgroundColor: "rgba(46,160,67,0.9)" },
   levelText: { ...typography.caption, color: "#fff", fontWeight: "700" },
-  guideWrap: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
+  // Centred in the space between the top bar and the controls at the bottom
+  guideWrap: {
+    position: "absolute",
+    top: "10%",
+    bottom: "26%",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   guideBox: {
-    width: "78%",
+    width: "86%",
     aspectRatio: 1,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.8)",
@@ -381,7 +402,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   guideOval: {
-    width: "68%",
+    width: "80%",
     aspectRatio: 0.75,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.8)",

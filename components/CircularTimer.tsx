@@ -13,6 +13,7 @@ import {
   Animated,
   Easing,
   AppState,
+  useWindowDimensions,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,10 +26,6 @@ import { segmentInfo, type GuideSegment } from "@/utils/sessionGuide";
 import HeadPhoto from "@/components/HeadPhoto";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const SIZE = 240;
-const STROKE = 14;
-const RADIUS = (SIZE - STROKE) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const RESET_DELAY_MS = 900;
 
 const mmss = (sec: number) =>
@@ -49,6 +46,15 @@ export default function CircularTimer({
   segments,
   voiceCues = false,
 }: Props) {
+  // The ring grows and shrinks with the screen: 180 to 260 points, never taller than about a third of the screen
+  const { width: winW, height: winH } = useWindowDimensions();
+  const SIZE = Math.round(Math.max(180, Math.min(260, winW * 0.62, winH * 0.32)));
+  const STROKE = Math.round(SIZE * 0.058);
+  const RADIUS = (SIZE - STROKE) / 2;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+  // Two head views side by side must fit the width
+  const headSize = Math.round(Math.min(170, (winW - 64) / 2));
+
   const [remaining, setRemaining] = useState(durationSec);
   const [running, setRunning] = useState(false);
   const [justFinished, setJustFinished] = useState(false);
@@ -236,8 +242,8 @@ export default function CircularTimer({
           origin={`${SIZE / 2}, ${SIZE / 2}`}
         />
       </Svg>
-      <View style={styles.center}>
-        <Text style={styles.time}>
+      <View style={[styles.center, { height: SIZE }]}>
+        <Text style={[styles.time, { fontSize: Math.round(SIZE * 0.165) }]}>
           {minutes}:{seconds.toString().padStart(2, "0")}
         </Text>
         <Text style={styles.subtitle}>{statusLabel}</Text>
@@ -258,7 +264,7 @@ export default function CircularTimer({
 
       {guided && !justFinished && (
         <View style={styles.guideRow}>
-          <HeadPhoto active={activeZone} size={148} />
+          <HeadPhoto active={activeZone} size={headSize} />
           <View style={styles.guideText}>
             {started && now && info ? (
               <>
@@ -286,7 +292,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: SIZE,
     alignItems: "center",
     justifyContent: "center",
   },

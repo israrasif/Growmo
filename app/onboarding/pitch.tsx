@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import type { PurchasesPackage } from "react-native-purchases";
 import { colors, radii, spacing, typography } from "@/constants/theme";
+import { contentColumn } from "@/utils/responsive";
 import {
   deleteOnboardingPhoto,
   loadOnboarding,
@@ -333,7 +334,7 @@ export default function PitchScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
+  root: { flex: 1, backgroundColor: colors.background, ...contentColumn },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   title: { ...typography.h1, color: colors.text, lineHeight: 34 },
   sectionTitle: {

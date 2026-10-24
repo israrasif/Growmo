@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radii, spacing, typography } from '@/constants/theme';
+import { contentColumn } from '@/utils/responsive';
 import Confetti from '@/components/Confetti';
 
 const NEXT_ROUTE = '/onboarding/pitch';
@@ -119,7 +120,7 @@ export default function BuildingPlanScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: spacing.lg, backgroundColor: colors.background },
+  root: { flex: 1, paddingHorizontal: spacing.lg, backgroundColor: colors.background, ...contentColumn },
   center: { flex: 1, justifyContent: 'center', alignItems: 'stretch' },
   title: { ...typography.h1, color: colors.text, textAlign: 'center' },
   message: {

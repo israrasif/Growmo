@@ -15,6 +15,8 @@ import { rescheduleReminders } from "@/utils/reminders";
 import { colors, spacing, typography } from "@/constants/theme";
 import { toLocalDateISO } from "@/utils/date";
 import TopBar from "@/components/TopBar";
+import { contentColumn } from "@/utils/responsive";
+import BaselinePhotoCard from "@/components/BaselinePhotoCard";
 
 export default function HomeScreen() {
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -87,6 +89,8 @@ export default function HomeScreen() {
 
         <GuideCard guide={guide} />
 
+        <BaselinePhotoCard />
+
         <ToggleList activities={activities} onToggle={handleToggle} />
 
         <DailyCheckIn />
@@ -97,7 +101,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  container: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  container: { padding: spacing.lg, paddingBottom: spacing.xl * 2, ...contentColumn },
   title: { ...typography.h1, color: colors.text },
   subtitle: {
     ...typography.body,
