@@ -18,6 +18,10 @@ export type OnboardingState = {
   photoStepDone?: boolean;
   /** True once the user has left onboarding (chose Free or completed a Plus purchase). Use for launch gating. */
   finished?: boolean;
+  /** True once the answers have been saved to the user's account */
+  answersSynced?: boolean;
+  /** Development only: a Plus account that restarted onboarding should see the questions, not be sent to the last step. */
+  devFullFlow?: boolean;
 };
 
 export const EMPTY_ONBOARDING: OnboardingState = { answers: {}, stepIndex: 0 };
@@ -61,6 +65,8 @@ export async function loadOnboarding(): Promise<OnboardingState> {
       photoUri: parsed.photoUri,
       photoStepDone: parsed.photoStepDone,
       finished: parsed.finished,
+      answersSynced: parsed.answersSynced,
+      devFullFlow: parsed.devFullFlow,
     };
   } catch {
     // Corrupt or unreadable data: start fresh rather than block the user.

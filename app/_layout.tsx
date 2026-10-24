@@ -11,10 +11,12 @@ import { colors } from "@/constants/theme";
 import { useDataSyncTriggers } from "@/utils/useDataSync";
 import { usePurchasesSetup } from "@/utils/usePurchasesSetup";
 import { useOnboardingFinished } from "@/utils/onboardingStorage";
+import { useOnboardingAnswersSync } from "@/utils/onboardingSync";
 
 export default function RootLayout() {
   useDataSyncTriggers();
   usePurchasesSetup(); // starts RevenueCat and ties purchases to the signed-in user
+  useOnboardingAnswersSync(); // saves the onboarding answers to the account (and retries if that failed)
   // undefined = still checking for a saved session, null = signed out.
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   // undefined = still loading, false = new user who needs onboarding, true = done.
