@@ -10,14 +10,15 @@ import { createSessionFromUrl } from "@/utils/authLink";
 import { colors } from "@/constants/theme";
 import { useDataSyncTriggers } from "@/utils/useDataSync";
 import { usePurchasesSetup } from "@/utils/usePurchasesSetup";
+import { useOnboardingFinished } from "@/utils/onboardingStorage";
 
 export default function RootLayout() {
   useDataSyncTriggers();
+  usePurchasesSetup(); // starts RevenueCat and ties purchases to the signed-in user
   // undefined = still checking for a saved session, null = signed out.
-
-  usePurchasesSetup();
-
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  // undefined = still loading, false = new user who needs onboarding, true = done.
+  const onboardingFinished = useOnboardingFinished();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -34,7 +35,7 @@ export default function RootLayout() {
     if (url) createSessionFromUrl(url).catch(() => {});
   }, [url]);
 
-  if (session === undefined) {
+  if (session === undefined || onboardingFinished === undefined) {
     return (
       <View
         style={{
@@ -53,9 +54,13 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
-        {/* Signed in: the app. Signed out: login. A session change swaps them automatically. */}
-        <Stack.Protected guard={!!session}>
+        {/* Signed in and onboarded: the app. Signed in but new: onboarding. Signed out: login.
+            When a guard changes (a session change, or onboarding finishing), the app switches automatically. */}
+        <Stack.Protected guard={!!session && onboardingFinished}>
           <Stack.Screen name="(drawer)" />
+        </Stack.Protected>
+        <Stack.Protected guard={!!session && !onboardingFinished}>
+          <Stack.Screen name="onboarding" />
         </Stack.Protected>
         <Stack.Protected guard={!session}>
           <Stack.Screen name="login" />

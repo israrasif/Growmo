@@ -29,6 +29,7 @@ import {
 import SessionLengthCard from "@/components/SessionLengthCard";
 import ReminderCard from "@/components/RemindersCard";
 import { syncUserData, clearLocalUserData } from "@/utils/dataSync";
+import { clearOnboarding } from "@/utils/onboardingStorage";
 
 const MAX_LABEL = 30;
 
@@ -247,6 +248,12 @@ export default function SettingsScreen() {
           <Ionicons name="log-out-outline" size={20} color={colors.danger} />
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
+
+        {__DEV__ && (
+          <Pressable onPress={clearOnboarding} style={{ padding: 16 }}>
+            <Text>Dev: restart onboarding</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,9 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system/legacy';
-import type { Answers } from '@/constants/onboardingQuestions';
+import { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system/legacy";
+import type { Answers } from "@/constants/onboardingQuestions";
 
-const KEY = 'onboarding:v1';
-const PHOTO_NAME = 'onboarding-photo.jpg';
+const KEY = "onboarding:v1";
+const PHOTO_NAME = "onboarding-photo.jpg";
 
 export type OnboardingState = {
   answers: Answers;
@@ -21,6 +22,33 @@ export type OnboardingState = {
 
 export const EMPTY_ONBOARDING: OnboardingState = { answers: {}, stepIndex: 0 };
 
+// Anything that needs to react when onboarding data changes (the root layout does) can listen here.
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((l) => l());
+
+/**
+ * true once the user has left onboarding, false while they still need it, undefined while loading.
+ * The root layout uses this to decide between the onboarding screens and the app.
+ */
+export function useOnboardingFinished(): boolean | undefined {
+  const [finished, setFinished] = useState<boolean | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      loadOnboarding().then((s) => {
+        if (alive) setFinished(!!s.finished);
+      });
+    };
+    refresh();
+    listeners.add(refresh);
+    return () => {
+      alive = false;
+      listeners.delete(refresh);
+    };
+  }, []);
+  return finished;
+}
+
 export async function loadOnboarding(): Promise<OnboardingState> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
@@ -28,7 +56,7 @@ export async function loadOnboarding(): Promise<OnboardingState> {
     const parsed = JSON.parse(raw) as Partial<OnboardingState>;
     return {
       answers: parsed.answers ?? {},
-      stepIndex: typeof parsed.stepIndex === 'number' ? parsed.stepIndex : 0,
+      stepIndex: typeof parsed.stepIndex === "number" ? parsed.stepIndex : 0,
       completedAt: parsed.completedAt,
       photoUri: parsed.photoUri,
       photoStepDone: parsed.photoStepDone,
@@ -41,10 +69,13 @@ export async function loadOnboarding(): Promise<OnboardingState> {
 }
 
 /** Merges the given fields into what is already saved, so one screen never wipes another's data. */
-export async function saveOnboarding(patch: Partial<OnboardingState>): Promise<void> {
+export async function saveOnboarding(
+  patch: Partial<OnboardingState>,
+): Promise<void> {
   try {
     const current = await loadOnboarding();
     await AsyncStorage.setItem(KEY, JSON.stringify({ ...current, ...patch }));
+    notify();
   } catch {
     // Non-fatal: answers stay in memory for this session.
   }
@@ -83,4 +114,5 @@ export async function clearOnboarding(): Promise<void> {
   } catch {
     // ignore
   }
+  notify();
 }
