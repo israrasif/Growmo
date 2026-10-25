@@ -11,7 +11,10 @@ const corsHeaders = {
 // Free Google Gemini model. "flash-latest" always points to the newest free Flash model.
 // If you get a 404, copy an exact model name from https://aistudio.google.com
 const MODEL = "gemini-flash-latest";
-const DAILY_LIMIT = 2; // scans per user per 24h (simple abuse/cost guard)
+const MONTHLY_LIMIT = 2; // saved AI hair checks per Plus member per rolling 30 days
+const ATTEMPT_LIMIT = 10; // photos sent to the AI per member per 24 hours, usable or not (cost guard)
+const MAX_IMAGE_BYTES = 4_000_000; // the app sends about 0.3 MB; anything much bigger is not from the app
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const RUBRIC = `You are a hair photo analysis assistant inside a hair care app.
 You give visual ESTIMATES only. You are not a doctor and never diagnose.
@@ -46,6 +49,28 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS")
     return new Response("ok", { headers: corsHeaders });
 
+  // The server's own key: used for the things people must not be able to do themselves
+  // (counting attempts, saving scans, deleting rejected uploads).
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  // The photo the app just uploaded for this check. It is deleted again unless the scan is saved.
+  let uploadedPath: string | null = null;
+  const discardUpload = async () => {
+    if (!uploadedPath) return;
+    try {
+      await admin.storage.from("hair-photos").remove([uploadedPath]);
+    } catch (e) {
+      console.error("Could not delete upload", e);
+    }
+  };
+  const reject = async (body: unknown, status: number) => {
+    await discardUpload();
+    return json(body, status);
+  };
+
   try {
     // 1. Who is calling? (uses the user's own login token)
     const authHeader = req.headers.get("Authorization");
@@ -61,11 +86,14 @@ Deno.serve(async (req) => {
     if (userErr || !userData.user) return json({ error: "Not signed in" }, 401);
     const user = userData.user;
 
-    // 2. Validate the request
+    // 2. Validate the request. Only photos uploaded for a check (<user id>/<number>.jpg) are accepted,
+    //    so a failed check can never delete someone's vault photos.
     const { path } = await req.json();
-    if (typeof path !== "string" || !path.startsWith(`${user.id}/`)) {
+    const scanUpload = new RegExp(`^${user.id}/\\d+\\.jpg$`);
+    if (typeof path !== "string" || !scanUpload.test(path)) {
       return json({ error: "Invalid photo path" }, 400);
     }
+    uploadedPath = path;
 
     // 3. Plan check: the AI hair check is a Plus feature.
     // Checked here (not just in the app) so it can't be bypassed.
@@ -78,16 +106,16 @@ Deno.serve(async (req) => {
       : false;
     const isPaid = !planExpired && planRow?.plan === "plus";
     if (!isPaid) {
-      return json(
+      return await reject(
         { error: "AI hair check is a Plus feature.", code: "plan_required" },
         403,
       );
     }
 
-    // 3b. Rate limit: 2 AI hair checks per rolling 30 days.
-    // Only saved scans count, so an unusable photo can be retaken for free.
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: recent } = await supabase
+    // 3b. Monthly limit: 2 saved AI hair checks per rolling 30 days.
+    // Unusable photos are not saved, so they do not count here and can be retaken.
+    const since = new Date(Date.now() - 30 * DAY_MS).toISOString();
+    const { data: recent } = await admin
       .from("scans")
       .select("created_at")
       .eq("user_id", user.id)
@@ -95,13 +123,13 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: true });
     if ((recent?.length ?? 0) >= MONTHLY_LIMIT) {
       const next = new Date(
-        new Date(recent![0].created_at).getTime() + 30 * 24 * 60 * 60 * 1000,
+        new Date(recent![0].created_at).getTime() + 30 * DAY_MS,
       );
       const when = next.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
       });
-      return json(
+      return await reject(
         {
           error: `You've used your ${MONTHLY_LIMIT} AI hair checks for this month. Your next one is available on ${when}.`,
           code: "limit_reached",
@@ -110,11 +138,52 @@ Deno.serve(async (req) => {
       );
     }
 
+    // 3c. Attempt limit: stops someone from sending endless blank photos, which cost AI quota even though
+    //     they are never saved.
+    const { count: attempts } = await admin
+      .from("scan_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .gte("created_at", new Date(Date.now() - DAY_MS).toISOString());
+    if ((attempts ?? 0) >= ATTEMPT_LIMIT) {
+      return await reject(
+        {
+          error:
+            "You've sent a lot of photos today. Please try again tomorrow.",
+          code: "attempts_limit",
+        },
+        429,
+      );
+    }
+    const { data: attempt } = await admin
+      .from("scan_attempts")
+      .insert({ user_id: user.id })
+      .select("id")
+      .single();
+    // If our side fails before the AI gives an answer, the attempt is given back
+    const refundAttempt = async () => {
+      if (attempt?.id)
+        await admin.from("scan_attempts").delete().eq("id", attempt.id);
+    };
+    // Tidy up old attempts (best effort)
+    admin
+      .from("scan_attempts")
+      .delete()
+      .eq("user_id", user.id)
+      .lt("created_at", new Date(Date.now() - 7 * DAY_MS).toISOString())
+      .then(
+        () => {},
+        () => {},
+      );
+
     // 4. Download the photo (storage policies make sure it's theirs)
     const { data: blob, error: dlErr } = await supabase.storage
       .from("hair-photos")
       .download(path);
-    if (dlErr || !blob) return json({ error: "Could not read photo" }, 400);
+    if (dlErr || !blob) {
+      await refundAttempt();
+      return await reject({ error: "Could not read photo" }, 400);
+    }
 
     const imageBytes = new Uint8Array(await blob.arrayBuffer());
     if (imageBytes.length < 1000) {
@@ -124,7 +193,15 @@ Deno.serve(async (req) => {
         "path:",
         path,
       );
-      return json({ error: "Photo upload was empty, please try again." }, 400);
+      await refundAttempt();
+      return await reject(
+        { error: "Photo upload was empty, please try again." },
+        400,
+      );
+    }
+    if (imageBytes.length > MAX_IMAGE_BYTES) {
+      await refundAttempt();
+      return await reject({ error: "That photo is too large." }, 413);
     }
     const base64 = encodeBase64(imageBytes);
     const mediaType =
@@ -172,11 +249,12 @@ Deno.serve(async (req) => {
 
     if (!llmRes.ok) {
       console.error("LLM error", llmRes.status, await llmRes.text());
+      await refundAttempt();
       const msg =
         llmRes.status === 429
           ? "We're busy right now, please try again in a minute."
           : "Analysis failed, please try again";
-      return json({ error: msg }, llmRes.status === 429 ? 429 : 502);
+      return await reject({ error: msg }, llmRes.status === 429 ? 429 : 502);
     }
 
     const llmData = await llmRes.json();
@@ -196,7 +274,8 @@ Deno.serve(async (req) => {
         "text:",
         text.slice(0, 300),
       );
-      return json({ error: "Bad analysis result" }, 502);
+      await refundAttempt();
+      return await reject({ error: "Bad analysis result" }, 502);
     }
 
     let parsed: any;
@@ -204,11 +283,14 @@ Deno.serve(async (req) => {
       parsed = JSON.parse(text.slice(start, end + 1));
     } catch {
       console.error("Unparseable LLM output:", text.slice(0, 300));
-      return json({ error: "Bad analysis result" }, 502);
+      await refundAttempt();
+      return await reject({ error: "Bad analysis result" }, 502);
     }
 
-    // Photo not usable: tell the app, don't save or count it
+    // Photo not usable: tell the app, don't save or count it as a scan, and delete the upload.
+    // It does count as an attempt, so blank photos cannot be sent without limit.
     if (parsed.usable === false) {
+      await discardUpload();
       return json({
         usable: false,
         notes: String(parsed.notes ?? "We couldn't see your hair clearly."),
@@ -227,8 +309,9 @@ Deno.serve(async (req) => {
     const notes = String(parsed.notes ?? "").slice(0, 500);
     const photo_tips = String(parsed.photo_tips ?? "").slice(0, 300);
 
-    // 7. Save the scan
-    const { data: row, error: insErr } = await supabase
+    // 7. Save the scan. Done with the server's key: people cannot write scan rows themselves,
+    //    so scores and the monthly count cannot be faked.
+    const { data: row, error: insErr } = await admin
       .from("scans")
       .insert({
         user_id: user.id,
@@ -246,13 +329,15 @@ Deno.serve(async (req) => {
 
     if (insErr) {
       console.error("Insert error", insErr);
-      return json({ error: "Could not save result" }, 500);
+      await refundAttempt();
+      return await reject({ error: "Could not save result" }, 500);
     }
 
-    // 8. Send the result back to the app
+    // 8. Send the result back to the app (the photo stays: the scan points to it)
+    uploadedPath = null;
     return json({ usable: true, scan: row });
   } catch (e) {
     console.error(e);
-    return json({ error: "Something went wrong" }, 500);
+    return await reject({ error: "Something went wrong" }, 500);
   }
 });

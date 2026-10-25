@@ -17,6 +17,7 @@ const TABLES = [
   "vault_photos",
   "user_settings",
   "scans",
+  "scan_attempts",
   "onboarding_answers",
   "user_plans",
 ];
