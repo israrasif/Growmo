@@ -6,8 +6,21 @@ import { useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { hasPlus, usePlan } from "@/utils/entitlements";
 import { getPlan } from "@/utils/planStore";
-import { currentWeek, type Plan, type WeekPlan, type ZoneId } from "@/utils/planBuilder";
-import { buildGuide, focusForNow, type GuideSegment } from "@/utils/sessionGuide";
+import { getSessions } from "@/utils/storage";
+import { toLocalDateISO } from "@/utils/date";
+import {
+  currentWeek,
+  type Plan,
+  type WeekPlan,
+  type ZoneId,
+} from "@/utils/planBuilder";
+import {
+  buildGuide,
+  focusForSession,
+  sessionsSince,
+  type GuideSegment,
+} from "@/utils/sessionGuide";
+import type { Session } from "@/types";
 
 const GUIDE_KEY = "@hair_massage/guide_on";
 const VOICE_KEY = "@hair_massage/voice_on";
@@ -20,8 +33,10 @@ export type SessionGuide = {
   weekNumber: number;
   /** A saved plan from before the three-area program: it needs to be rebuilt */
   outdated: boolean;
-  /** The scalp area for this session (changes with the time of day) */
+  /** The scalp area for the next session. It moves on after every finished session. */
   focus: ZoneId | null;
+  /** Sessions finished today */
+  sessionsToday: number;
   guideOn: boolean;
   voiceOn: boolean;
   setGuideOn: (v: boolean) => void;
@@ -30,24 +45,31 @@ export type SessionGuide = {
   segments: GuideSegment[] | undefined;
   /** The steps shown in the card even when the switch is off */
   preview: GuideSegment[];
+  /** Call after a session is finished, so the next area shows up */
+  refresh: () => Promise<void>;
 };
 
 export function useSessionGuide(durationSec: number): SessionGuide {
   const isPlus = hasPlus(usePlan());
   const [plan, setPlan] = useState<Plan | null>(null);
-  const [now, setNow] = useState(() => new Date());
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [guideOn, setGuideOnState] = useState(true);
   const [voiceOn, setVoiceOnState] = useState(true);
 
+  const refresh = useCallback(async () => {
+    const [p, s] = await Promise.all([getPlan(), getSessions()]);
+    setPlan(p);
+    setSessions(s);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      setNow(new Date()); // the area depends on the time of day
-      getPlan().then(setPlan);
+      refresh();
       AsyncStorage.multiGet([GUIDE_KEY, VOICE_KEY]).then(([[, g], [, v]]) => {
         if (g != null) setGuideOnState(g === "1");
         if (v != null) setVoiceOnState(v === "1");
       });
-    }, []),
+    }, [refresh]),
   );
 
   const usablePlan = isPlus ? plan : null;
@@ -56,13 +78,21 @@ export function useSessionGuide(durationSec: number): SessionGuide {
 
   const weekNumber = ready ? currentWeek(ready) : 0;
   const week = ready ? ready.weeks[weekNumber - 1] : null;
+
+  const sessionsDone = ready ? sessionsSince(sessions, ready.createdAt) : 0;
   const focus =
     ready && ready.program
-      ? focusForNow(ready.createdAt, now, ready.program.morningUntilHour, ready.program.rotation)
+      ? focusForSession(sessionsDone, ready.program.rotation)
       : null;
 
+  const todayISO = toLocalDateISO(new Date());
+  const sessionsToday = sessions.filter((s) => s.dateISO === todayISO).length;
+
   const preview = useMemo(
-    () => (ready && week && focus ? buildGuide(focus, durationSec, ready.program, week.press) : []),
+    () =>
+      ready && week && focus
+        ? buildGuide(focus, durationSec, ready.program, week.press)
+        : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ready, week, focus, durationSec],
   );
@@ -74,6 +104,7 @@ export function useSessionGuide(durationSec: number): SessionGuide {
     weekNumber,
     outdated,
     focus,
+    sessionsToday,
     guideOn,
     voiceOn,
     setGuideOn: (v) => {
@@ -86,5 +117,6 @@ export function useSessionGuide(durationSec: number): SessionGuide {
     },
     segments: guideOn && preview.length > 0 ? preview : undefined,
     preview,
+    refresh,
   };
 }

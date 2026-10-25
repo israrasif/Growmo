@@ -15,7 +15,7 @@ import { Session } from "@/types";
 import { requestSync } from "@/utils/syncSignal";
 import { getPlan } from "@/utils/planStore";
 import { currentWeek, type Plan } from "@/utils/planBuilder";
-import { focusForNow } from "@/utils/sessionGuide";
+import { focusForSession, sessionsSince } from "@/utils/sessionGuide";
 
 export const REMINDER_KEY = "@hair_massage/reminder_settings";
 const KEY = REMINDER_KEY;
@@ -194,11 +194,15 @@ function sessionNear(
   });
 }
 
-function twoSessionMessage(plan: Plan, when: Date) {
-  const focus = focusForNow(
-    plan.createdAt,
-    when,
-    plan.program.morningUntilHour,
+function twoSessionMessage(
+  plan: Plan,
+  when: Date,
+  sessionsAhead: number,
+  sessionsDone: number,
+) {
+  // The next session is the next area in the rotation; each later reminder is one step further on
+  const focus = focusForSession(
+    sessionsDone + sessionsAhead,
     plan.program.rotation,
   );
   const word =
@@ -238,6 +242,8 @@ export async function rescheduleReminders(): Promise<void> {
     const now = new Date();
     const todayISO = toLocalDateISO(now);
     const doneToday = sessions.some((s) => s.dateISO === todayISO);
+    const sessionsDone = plan ? sessionsSince(sessions, plan.createdAt) : 0;
+    let ahead = 0; // reminders scheduled so far: each one is another session in the rotation
 
     for (let i = 0; i < DAYS_AHEAD; i++) {
       for (let slot = 0; slot < times.length; slot++) {
@@ -256,7 +262,7 @@ export async function rescheduleReminders(): Promise<void> {
           continue; // already done: no nudge
 
         const msg = plan
-          ? twoSessionMessage(plan, when)
+          ? twoSessionMessage(plan, when, ahead++, sessionsDone)
           : MESSAGES[(when.getDate() + i) % MESSAGES.length];
         await Notifications.scheduleNotificationAsync({
           identifier: `${ID_PREFIX}${toLocalDateISO(when)}${plan ? `-${slot}` : ""}`,

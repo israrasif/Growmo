@@ -22,7 +22,7 @@ const MAIN_ITEMS: Item[] = [
     href: "/routine",
     tag: "Plus",
   },
-  { label: "Tips", icon: "bulb-outline", href: "/tips" }
+  { label: "Tips", icon: "bulb-outline", href: "/tips" },
 ];
 
 // Home owns the whole bottom tab bar, so it counts as active on any of these.
@@ -97,7 +97,7 @@ export default function DrawerContent(props: Props) {
         >
           <Text style={styles.upgradeTitle}>Unlock Plus</Text>
           <Text style={styles.upgradeBody}>
-            Unlimited photos, side-by-side compare and trend graphs.
+            A personalized routine, AI hair checks and photo compare.
           </Text>
           <View style={styles.upgradeButton}>
             <Text style={styles.upgradeButtonText}>See plans</Text>

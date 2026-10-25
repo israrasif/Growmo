@@ -20,7 +20,11 @@ export type PlanProgress = {
   reviewedWeek?: number; // the last week a review suggestion was answered, so it shows once a week
 };
 
-const EMPTY_PROGRESS: PlanProgress = { done: {}, shedding: {}, irritation: false };
+const EMPTY_PROGRESS: PlanProgress = {
+  done: {},
+  shedding: {},
+  irritation: false,
+};
 
 // ---------------------------------------------------------------- plan
 export async function getPlan(): Promise<Plan | null> {
@@ -78,9 +82,19 @@ function looksValid(c: any): boolean {
   return (
     c &&
     typeof c.version === "number" &&
-    c.levels?.L1 && c.levels?.L2 && c.levels?.L3 && c.levels?.L4 &&
-    c.profiles && c.zones && c.zoneStyles && c.ramp && c.review && c.gates &&
-    Array.isArray(c.habits) && c.tasks
+    c.levels?.L1 &&
+    c.levels?.L2 &&
+    c.levels?.L3 &&
+    c.levels?.L4 &&
+    c.profiles &&
+    c.zones &&
+    c.zoneShort &&
+    c.program &&
+    c.ramp &&
+    c.review &&
+    c.gates &&
+    Array.isArray(c.habits) &&
+    c.tasks
   );
 }
 
@@ -124,7 +138,13 @@ export async function getScanInput(): Promise<ScanInput> {
   try {
     const scans = await fetchScans();
     const s = scans.length ? scans[scans.length - 1] : null;
-    return s ? { overall: s.overall, density: s.density, scalp_coverage: s.scalp_coverage } : null;
+    return s
+      ? {
+          overall: s.overall,
+          density: s.density,
+          scalp_coverage: s.scalp_coverage,
+        }
+      : null;
   } catch {
     return null;
   }

@@ -30,6 +30,7 @@ import SessionLengthCard from "@/components/SessionLengthCard";
 import ReminderCard from "@/components/RemindersCard";
 import { syncUserData, clearLocalUserData } from "@/utils/dataSync";
 import { clearOnboarding } from "@/utils/onboardingStorage";
+import AccountCard from "@/components/AccountCard";
 
 const MAX_LABEL = 30;
 
@@ -254,6 +255,7 @@ export default function SettingsScreen() {
             <Text>Dev: restart onboarding</Text>
           </Pressable>
         )}
+        <AccountCard />
       </ScrollView>
     </SafeAreaView>
   );

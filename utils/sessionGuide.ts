@@ -33,7 +33,9 @@ export function buildGuide(
 ): GuideSegment[] {
   if (durationSec <= 0) return [];
 
-  const base = { ...(focus === "sides" ? program.split.sides : program.split.standard) } as Partial<Record<PhaseId, number>>;
+  const base = {
+    ...(focus === "sides" ? program.split.sides : program.split.standard),
+  } as Partial<Record<PhaseId, number>>;
   if (!press && base.press) {
     const share = base.press / 2;
     base.pinch = (base.pinch ?? 0) + share;
@@ -58,9 +60,12 @@ export function buildGuide(
       const isWarmup = phase === "warmup";
       return {
         id: `${phase}-${i}`,
-        zone: (isWarmup ? "all" : phase === "ridge" ? "sides" : focus) as ZoneId | "all",
+        zone: (isWarmup ? "all" : phase === "ridge" ? "sides" : focus) as
+          ZoneId | "all",
         phase,
-        label: isWarmup ? `${info.label}, whole scalp` : `${info.label}, ${short}`,
+        label: isWarmup
+          ? `${info.label}, whole scalp`
+          : `${info.label}, ${short}`,
         text: info.text,
         seconds,
       };
@@ -84,22 +89,25 @@ export function segmentInfo(
 }
 
 // ------------------------------------------------------------ rotation
-const startOfLocalDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+/** How many sessions were finished since the plan was made. */
+export function sessionsSince(
+  sessions: { timestamp: number }[],
+  since: string | Date,
+): number {
+  const start = new Date(since).getTime();
+  return sessions.filter((s) => s.timestamp >= start).length;
+}
 
 /**
- * Which scalp area is up for this session. Two slots a day (morning and evening) step through the three
- * areas in order, so with two sessions a day each area is worked once every 36 hours:
- * day 1 hairline then vertex, day 2 sides then hairline, day 3 vertex then sides, and so on.
- * Based only on the date and time of day, so skipping a session never breaks the rotation.
+ * Which scalp area is up next. The areas take turns, one per finished session, in the order of the rotation
+ * (hairline, vertex, sides, and round again). With two sessions a day that gives each area 36 hours to rest,
+ * as in the original program: day 1 hairline then vertex, day 2 sides then hairline, day 3 vertex then sides.
+ * Because it counts finished sessions, a second session the same morning moves on to the next area.
  */
-export function focusForNow(
-  planStart: string | Date,
-  now: Date,
-  morningUntilHour: number,
+export function focusForSession(
+  sessionsDone: number,
   rotation: ZoneId[],
 ): ZoneId {
-  const days = Math.round((startOfLocalDay(now) - startOfLocalDay(new Date(planStart))) / 86400000);
-  const slot = now.getHours() < morningUntilHour ? 0 : 1;
-  const index = (((Math.max(0, days) * 2 + slot) % rotation.length) + rotation.length) % rotation.length;
-  return rotation[index];
+  const n = rotation.length;
+  return rotation[((sessionsDone % n) + n) % n];
 }

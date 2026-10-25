@@ -8,6 +8,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const BUCKET = "hair-photos";
 // Every table that holds a user's data (all have a user_id column). Add new tables here when you create them.
 const TABLES = [
+  "session_activities", // before sessions
+  "sessions",
+  "activities",
   "massage_sessions",
   "daily_logs",
   "quiz_results",

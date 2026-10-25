@@ -24,6 +24,7 @@ export default function HomeScreen() {
   const [durationSec, setDurationSec] = useState(DEFAULT_SESSION_MIN * 60);
   // Guided sessions: the timer moves you through the areas of your scalp, using your plan
   const guide = useSessionGuide(durationSec);
+  const refreshGuide = guide.refresh;
 
   // Reload on focus so edits made in Settings show up (this screen stays mounted in the drawer).
   useFocusEffect(
@@ -57,6 +58,7 @@ export default function HomeScreen() {
         activities: activities.filter((a) => a.enabled).map((a) => a.label),
       };
       await addSession(session);
+      await refreshGuide(); // the next session moves on to the next area
       // Done for today: drop today's reminder and keep the next days
       rescheduleReminders();
       Alert.alert(
@@ -64,7 +66,7 @@ export default function HomeScreen() {
         "Nice work — this session was added to your tracker.",
       );
     },
-    [activities],
+    [activities, refreshGuide],
   );
 
   return (
@@ -88,7 +90,6 @@ export default function HomeScreen() {
         </View>
 
         <GuideCard guide={guide} />
-
         <BaselinePhotoCard />
 
         <ToggleList activities={activities} onToggle={handleToggle} />
@@ -101,7 +102,11 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  container: { padding: spacing.lg, paddingBottom: spacing.xl * 2, ...contentColumn },
+  container: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xl * 2,
+    ...contentColumn,
+  },
   title: { ...typography.h1, color: colors.text },
   subtitle: {
     ...typography.body,
