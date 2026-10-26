@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import {
   Alert,
+  Button,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -31,6 +32,7 @@ import ReminderCard from "@/components/RemindersCard";
 import { syncUserData, clearLocalUserData } from "@/utils/dataSync";
 import { clearOnboarding } from "@/utils/onboardingStorage";
 import AccountCard from "@/components/AccountCard";
+import * as Sentry from "@sentry/react-native";
 
 const MAX_LABEL = 30;
 
@@ -255,6 +257,13 @@ export default function SettingsScreen() {
             <Text>Dev: restart onboarding</Text>
           </Pressable>
         )}
+
+        <Button
+          title="Try!"
+          onPress={() => {
+            Sentry.captureException(new Error("First error"));
+          }}
+        />
         <AccountCard />
       </ScrollView>
     </SafeAreaView>

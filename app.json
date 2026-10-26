@@ -46,7 +46,15 @@
       "expo-font",
       "expo-web-browser",
       "expo-notifications",
-      "expo-camera"
+      "expo-camera",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "growmo",
+          "organization": "not-applicable-ah"
+        }
+      ]
     ],
     "extra": {
       "router": {

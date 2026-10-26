@@ -25,6 +25,12 @@ import {
   loadOnboarding,
   saveOnboarding,
 } from "@/utils/onboardingStorage";
+import {
+  describeFailure,
+  PHOTO_CHECKLIST,
+  type Failure,
+} from "@/utils/analysisMessages";
+import { track } from "@/utils/analytics";
 
 type Stage =
   | "activating" // waiting for Plus to show up in the database
@@ -56,12 +62,14 @@ export default function AnalysisScreen() {
   const [scan, setScan] = useState<Scan | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [tip, setTip] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const started = useRef(false);
 
   const analyze = useCallback(async (uri: string) => {
     setPhotoUri(uri);
     setMessage(null);
     setTip(null);
+    setFailure(null);
     setStage("analyzing");
 
     const res = await analyzeHairPhoto(uri);
@@ -76,13 +84,17 @@ export default function AnalysisScreen() {
       }
       await deleteOnboardingPhoto();
       setStage("result");
+      track("analysis_result", { outcome: "success" });
     } else if (res.reason === "unusable") {
       setMessage(res.notes || "We couldn't see your hair clearly.");
       setTip(res.photoTips || null);
       setStage("unusable");
+      track("analysis_result", { outcome: "unusable" });
     } else {
-      setMessage(res.message);
+      const f = describeFailure(res.message);
+      setFailure(f);
       setStage("failed");
+      track("analysis_result", { outcome: f.kind });
     }
   }, []);
 
@@ -109,6 +121,7 @@ export default function AnalysisScreen() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    track("analysis_viewed", { resumed });
     // The purchase step already confirmed Plus in the database when synced === '1'.
     begin(synced !== "1");
   }, [begin, synced]);
@@ -118,6 +131,10 @@ export default function AnalysisScreen() {
 
   // Leaving onboarding: the root layout switches to the app once this is saved.
   const finish = async () => {
+    track("onboarding_finished", {
+      path: resumed ? "plus_resumed" : "plus",
+      stage,
+    });
     await deleteOnboardingPhoto();
     await saveOnboarding({ finished: true });
   };
@@ -201,15 +218,31 @@ export default function AnalysisScreen() {
         {stage === "unusable" && (
           <View style={styles.block}>
             <Text style={styles.heading}>Let's try that photo again</Text>
-            {!!message && <Text style={styles.blockText}>{message}</Text>}
-            {!!tip && <Text style={styles.tip}>Tip: {tip}</Text>}
+            <Text style={styles.blockText}>
+              {message || "We couldn't see your hair clearly in that one."}
+            </Text>
+            <Text style={styles.blockText}>
+              This one didn't use up one of your monthly checks, so you can try
+              as often as you need.
+            </Text>
+            {!!tip && <Text style={styles.tip}>Try this: {tip}</Text>}
+            <Text style={[styles.heading, styles.checklistTitle]}>
+              For a clear photo
+            </Text>
+            {PHOTO_CHECKLIST.map((line) => (
+              <Text key={line} style={styles.checkLine}>
+                • {line}
+              </Text>
+            ))}
           </View>
         )}
 
         {stage === "failed" && (
           <View style={styles.block}>
-            <Text style={styles.heading}>The analysis did not finish</Text>
-            {!!message && <Text style={styles.blockText}>{message}</Text>}
+            <Text style={styles.heading}>
+              {failure?.title ?? "The analysis didn't finish"}
+            </Text>
+            <Text style={styles.blockText}>{failure?.body ?? message}</Text>
           </View>
         )}
 
@@ -310,6 +343,16 @@ export default function AnalysisScreen() {
               <Text style={styles.ctaText}>Take a new photo</Text>
             </Pressable>
             <Pressable
+              onPress={choosePhoto}
+              accessibilityRole="button"
+              style={styles.ctaAlt}
+            >
+              <Ionicons name="images" size={20} color={colors.primary} />
+              <Text style={[styles.ctaText, { color: colors.primary }]}>
+                Choose from library
+              </Text>
+            </Pressable>
+            <Pressable
               onPress={finish}
               hitSlop={8}
               accessibilityRole="button"
@@ -322,21 +365,33 @@ export default function AnalysisScreen() {
 
         {stage === "failed" && (
           <>
-            <Pressable
-              onPress={() => (photoUri ? analyze(photoUri) : begin(false))}
-              accessibilityRole="button"
-              style={styles.cta}
-            >
-              <Text style={styles.ctaText}>Try again</Text>
-            </Pressable>
-            <Pressable
-              onPress={finish}
-              hitSlop={8}
-              accessibilityRole="button"
-              style={styles.linkWrap}
-            >
-              <Text style={styles.link}>Skip for now</Text>
-            </Pressable>
+            {failure?.canRetry === false ? (
+              <Pressable
+                onPress={finish}
+                accessibilityRole="button"
+                style={styles.cta}
+              >
+                <Text style={styles.ctaText}>Continue</Text>
+              </Pressable>
+            ) : (
+              <>
+                <Pressable
+                  onPress={() => (photoUri ? analyze(photoUri) : begin(false))}
+                  accessibilityRole="button"
+                  style={styles.cta}
+                >
+                  <Text style={styles.ctaText}>Try again</Text>
+                </Pressable>
+                <Pressable
+                  onPress={finish}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  style={styles.linkWrap}
+                >
+                  <Text style={styles.link}>Skip for now</Text>
+                </Pressable>
+              </>
+            )}
           </>
         )}
 
@@ -395,6 +450,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.sm,
     lineHeight: 22,
+  },
+  checklistTitle: { fontSize: 20, lineHeight: 26, marginTop: spacing.lg },
+  checkLine: {
+    ...typography.body,
+    color: colors.text,
+    marginTop: spacing.xs + 2,
+    lineHeight: 20,
   },
   tip: {
     ...typography.body,
